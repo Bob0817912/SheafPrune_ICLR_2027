@@ -11,9 +11,6 @@
   <strong>代码：Coming soon</strong>   ·   <strong>权重：Coming soon</strong>
 </p>
 
-<p align="center">
-  <img src="assets/paper/method.png" width="100%" alt="SheafPrune 方法总览">
-</p>
 
 ## 项目概览
 
