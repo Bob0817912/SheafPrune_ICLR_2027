@@ -1,183 +1,91 @@
 <p align="center">
-  <img src="assets/readme/hero-en.png" width="100%" alt="SheafPrune — Keep the evidence. Prune the rest. Code and weights coming soon.">
+  <strong style="font-size: 2.2em;">SheafPrune</strong><br>
+  <em>Question-aware visual token pruning for efficient multimodal reasoning</em>
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README_zh-CN.md">简体中文</a>
+  <a href="README_zh-CN.md">简体中文</a> · <strong>English</strong>
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a>   /  
-  <a href="#method">Method</a>   /  
-  <a href="#visualizations">Visualizations</a>   /  
-  <a href="#results">Results</a>   /  
-  <a href="#release">Release</a>
+  <strong>Code: Coming soon</strong>   ·   <strong>Weights: Coming soon</strong>
 </p>
 
-> **Code: Coming soon. &nbsp; Model weights: Coming soon.**
->
-> This repository currently presents the method and selected visualizations. The implementation and trained SheafPrune checkpoints will be released here.
+<p align="center">
+  <img src="assets/paper/method.png" width="100%" alt="SheafPrune method overview">
+</p>
 
-<a id="overview"></a>
+## Overview
 
-## Less to process. More to focus on.
+High-resolution images can flood a vision-language model with visual tokens that are irrelevant to the question. **SheafPrune keeps the evidence that matters and removes the rest before decoding.** It combines cross-modal relevance with visual structure, diffuses the resulting scores over a support-constrained graph, and performs one-shot Top-K selection before the language model sees the image tokens.
 
-High-resolution images can contribute thousands of visual tokens to a vision-language model. Yet a question may depend on only a small part of that image: a brand name, an animal, or the equipment beneath a person's feet.
+The design keeps the backbone frozen and concentrates learning in a lightweight pruning module. The retention budget is explicit, so the same model can trade visual context for latency at inference time.
 
-**SheafPrune selects visual tokens before they enter the language model.** It combines sheaf-derived cross-modal relevance with a visual prior, refines scores through graph diffusion, and retains a budgeted Top-K subset. The vision encoder, multimodal projector, and language model remain frozen while the lightweight pruning module is trained.
+| What the paper reports      |                                                                             Result |
+| :-------------------------- | ---------------------------------------------------------------------------------: |
+| Backbone families           |                        4: LLaVA-NeXT-8B, Qwen2.5-VL-7B, LLaVA-1.5-7B, InternVL3-8B |
+| Benchmark suite             |                                                           10 multimodal benchmarks |
+| Best-δ envelope wins       |                                        **22 / 28** backbone–budget settings |
+| LLaVA-NeXT at 10% retention |                                    **90.42%** relative performance retention |
+| Same setting                | **5.15×** net prefill speedup · **84.0%** end-to-end FLOPs reduction |
+
+## How SheafPrune selects tokens
+
+<p align="center">
+  <img src="assets/paper/method.png" width="100%" alt="Four stages of SheafPrune: token projection, cross-modal relevance, support-constrained diffusion, and Top-K pruning">
+</p>
+
+1. **Project the question and the image.** Text and visual tokens are mapped into a shared normalized space, conditioned on the requested retention budget.
+2. **Transfer relevance across modalities.** A sparse text–vision coupling graph propagates question importance to visual tokens.
+3. **Respect visual support.** The relevance signal is fused with a visual prior and diffused on a support-constrained visual graph, preserving coherent evidence.
+4. **Prune once, before decoding.** The final scores drive budgeted Top-K selection; discarded visual tokens never enter the language-model prefill sequence.
+
+This is the central idea: pruning is driven by the question, while the graph structure keeps the selected evidence spatially meaningful.
+
+## Results across four backbones
+
+<p align="center">
+  <img src="assets/paper/results.png" width="100%" alt="Performance retention and net speedup across four vision-language backbones">
+</p>
+
+The figure reports the paper's **best-δ performance envelope**: for each pruning budget, the strongest δ configuration is shown. It should be read as a comparison of achievable operating points, rather than as one fixed-δ deployment curve.
+
+At the aggressive **10% retention / 90% pruning** point on LLaVA-NeXT, SheafPrune retains **90.42%** relative performance, reaches **5.15×** net prefill speedup, and reduces end-to-end FLOPs by **84.0%**. At **70% pruning**, it still retains **98.7%** performance with **2.70×** net prefill speedup.
+
+## Qualitative evidence at tight budgets
+
+These examples are taken from the paper and lightly cropped for README presentation. The masks show what remains visible to the model as the retention budget drops from 50% to 10%; **Ours** denotes SheafPrune.
+
+<p align="center">
+  <img src="assets/paper/qualitative-main.png" width="100%" alt="Paper qualitative comparison on animal recognition and sports understanding">
+</p>
+
+The two tasks above test global scene understanding. The close-up cases below stress the opposite failure mode: a tiny region must survive because it contains the answer.
 
 <table>
   <tr>
-    <td align="center" width="33%"><h3>50%</h3>visual tokens pruned</td>
-    <td align="center" width="34%"><h3>99.18%</h3>reported performance retention</td>
-    <td align="center" width="33%"><h3>1.74×</h3>reported net prefill speedup</td>
+    <td align="center" width="50%"><img src="assets/paper/case-hat.png" width="100%" alt="Paper case study: reading a letter on a baseball player's hat"><br><sub>Fine-grained text evidence: a letter on the hat</sub></td>
+    <td align="center" width="50%"><img src="assets/paper/case-brand.png" width="100%" alt="Paper case study: recognizing a diaper brand"><br><sub>Localized visual evidence: a small brand mark</sub></td>
   </tr>
 </table>
 
-<sub></sub>Reported in the project evaluation summary for LLaVA-NeXT-8B at 50% nominal pruning. Performance retention is relative to the unpruned baseline; it is not absolute accuracy. See <a href="#results"> for scope and measurement notes.Results</sub>
+At 10% retention, the retained regions remain concentrated around the queried subject instead of spreading uniformly across the image. That is the practical value of question-aware pruning: fewer tokens, while the answer-bearing pixels stay in the sequence.
 
-### [Designed around the question](#results)
+## Scope
 
-- [**Cross-modal relevance.** A budget-conditioned text encoder and sheaf projections connect the question to visual evidence.](#results)
-- [**Structure-aware selection.** Visual graph diffusion combines cross-modal relevance with a visual feature-norm prior before ranking tokens.](#results)
-- [**A lightweight trainable module.** The project reports approximately **4.5M trainable parameters**, with the backbone frozen.](#results)
-- [**Adjustable inference budgets.** A retention-ratio input controls how many candidate tokens survive; inference physically removes discarded tokens.](#results)
+The paper evaluates SheafPrune with **LLaVA-NeXT-8B, Qwen2.5-VL-7B, LLaVA-1.5-7B, and InternVL3-8B** on **ChartQA, DocVQA, TextVQA, HR-Bench 4K, HR-Bench 8K, GQA, VQAv2, MMBench-EN, POPE, and MME**.
 
-[<a id="method"></a>](#results)
+## Release status
 
-## From relevance to a smaller sequence
+| Resource                                         | Status                       |
+| :----------------------------------------------- | :--------------------------- |
+| Paper figures and method summary                 | Available in this repository |
+| Training and inference code                      | **Coming soon**        |
+| Pretrained SheafPrune weights                    | **Coming soon**        |
+| Reproduction instructions and evaluation scripts | **Coming soon**        |
 
-<p align="center">
-  <img src="assets/readme/method-en.png" width="100%" alt="Four stages: align text and vision, propagate relevance, diffuse on the visual graph, and select Top-K tokens.">
-</p>
-
-1. **Align text and vision.** Encode the question with a retention-ratio condition, then project text and visual features into a shared normalized space.
-2. **Build cross-modal relevance.** Convert pairwise edge energies into affinities. Sparsify the text–vision graph, normalize its degrees, and propagate text importance to visual tokens.
-3. **Refine on the visual graph.** Fuse cross-modal relevance with a visual feature-norm prior. Diffuse over visual similarities and apply degree normalization.
-4. **Keep the budgeted evidence.** Rank candidate tokens and select Top-K. Training uses differentiable gating; inference physically shortens the sequence while preserving token order and positional information.
-
-<details>
-<summary><strong>A closer look at the cross-modal energy</strong></summary>
-
-For normalized projected text and visual features, the implementation computes
-
-$$
-E_{ji}=2-2\langle \hat{z}^{\,t}_j,\hat{z}^{\,v}_i\rangle,
-\qquad
-A_{ji}=\exp(-E_{ji}/\tau_E).
-$$
-
-Lower energy produces stronger affinity. Text-importance weights then propagate over a sparse, degree-normalized affinity graph to produce visual relevance scores. These scores are fused with the visual prior before graph diffusion and final selection.
-
-The budget applies to **candidate visual tokens**. Required structural tokens may be retained separately, so nominal and realized whole-sequence retention can differ.
-
-</details>
-
-<a id="visualizations"></a>
-
-## Just 10% of the tokens. Look at what remains.
-
-At **90% nominal pruning**, every retained region counts. These five selected examples put the tightest supplied budget side by side: follow the phone, the surfer, the snowboarder, the cat, and the animals through each method’s retained tokens.
-
-<p align="center">
-  <a href="assets/readme/gallery-en.png"><img src="assets/readme/gallery-en.png" width="100%" alt="Five selected examples comparing the original image, ToMe, FastV, SparseVLM, and SheafPrune at nominal 10% retention."></a>
-</p>
-
-**What to look for:** the concentration and continuity of retained regions around the main subjects. The figures use the original token masks in a redesigned layout; gray regions mark removed tokens. These selected qualitative examples illustrate token selection, not answer accuracy or an aggregate ranking.
-
-### Explore all three budgets
-
-Expand a case to compare **ToMe · FastV · SparseVLM · SheafPrune** at the displayed 50%, 30%, and 10% retention settings. “Ours” in the original figures denotes SheafPrune. Each image links to its full-resolution version.
-
-<details>
-<summary><strong>01 · Reading a brand</strong> — What brand of cellphone is this?</summary>
-
-[![TextVQA cellphone-brand comparison across four methods and three retention settings.](assets/readme/textvqa_34866.png)](assets/readme/textvqa_34866.png)
-
-**TextVQA** · A localized text-recognition example with a small brand region on the device.
-
-</details>
-
-<details>
-<summary><strong>02 · Recognizing an action</strong> — What is the man doing in this picture?</summary>
-
-[![VQAv2 surfing-action comparison across four methods and three retention settings.](assets/readme/vqav2_217622003.png)](assets/readme/vqav2_217622003.png)
-
-**VQAv2** · A person and an action embedded in a textured background of waves.
-
-</details>
-
-<details>
-<summary><strong>03 · Looking at the equipment</strong> — What is the man wearing on his feet?</summary>
-
-[![VQAv2 snow-sport equipment comparison across four methods and three retention settings.](assets/readme/vqav2_171622006.png)](assets/readme/vqav2_171622006.png)
-
-**VQAv2** · A question about a specific body region and its nearby equipment.
-
-</details>
-
-<details>
-<summary><strong>04 · Finding the subject indoors</strong> — What is the cat doing?</summary>
-
-[![VQAv2 cat-action comparison across four methods and three retention settings.](assets/readme/vqav2_303706007.png)](assets/readme/vqav2_303706007.png)
-
-**VQAv2** · A small animal within a scene dominated by cabinets and strong background edges.
-
-</details>
-
-<details>
-<summary><strong>05 · Recognizing an animal</strong> — What type of animal is pictured?</summary>
-
-[![VQAv2 animal-recognition comparison across four methods and three retention settings.](assets/readme/vqav2_520727003.png)](assets/readme/vqav2_520727003.png)
-
-**VQAv2** · Object recognition in an outdoor scene with vegetation and background structure.
-
-</details>
-
-<a id="results"></a>
-
-## A smaller budget, measured
-
-With **half the candidate visual tokens removed**, the project reports **99.18% performance retention**. At **90% nominal pruning**, it reports **87.97% retention** and **5.15× net prefill speedup** on **LLaVA-NeXT-8B**.
-
-| Nominal tokens kept | Nominal tokens pruned | SheafPrune performance retention | Random selection retention | Net prefill speedup |
-| :-----------------: | :-------------------: | :------------------------------: | :------------------------: | :-----------------: |
-|    **10%**    |          90%          |         **87.97%**         |           72.50%           |   **5.15×**   |
-
-<sub>Reported project results, transcribed from the existing evaluation summary. Raw evaluation logs are not included in this preview. “—” indicates a value not provided in that summary.</sub>
-
-**Evaluation scope.** The project documentation describes 9 benchmarks and 12,438 evaluation samples: **GQA, VQAv2, POPE, TextVQA, DocVQA, ChartQA, MME, MMBench-EN, and HR-Bench 4K**.
-
-**How to read the numbers.** Performance retention is measured relative to the unpruned model under the documented protocol. The reported speedups refer to **prefill**, include the pruning module's overhead, and should not be interpreted as end-to-end generation speedups. Structural tokens can make realized retention differ from the nominal candidate-token budget. Results depend on the model, hardware, and evaluation setup.
-
-### Backbone integrations
-
-The implementation includes adapters for the following model families. The numerical results above refer specifically to LLaVA-NeXT-8B.
-
-| Backbone   | Model scale | Public implementation |
-| :--------- | :---------: | :-------------------: |
-| LLaVA-NeXT |     8B     |      Coming soon      |
-| Qwen2.5-VL |     7B     |      Coming soon      |
-| InternVL3  |     8B     |      Coming soon      |
-| LLaVA-1.5  |     7B     |      Coming soon      |
-
-<a id="release"></a>
-
-## Code & weights — Coming soon
-
-| Resource                                                       | Status                        |
-| :------------------------------------------------------------- | :---------------------------- |
-| Method overview and selected visualizations                    | Available in this repository  |
-| SheafPrune source code                                         | **Coming soon**         |
-| Trained SheafPrune weights / checkpoints                       | **Coming soon**         |
-| Installation, inference, training, and evaluation instructions | To accompany the code release |
-
-This is a research preview. Download links and runnable instructions will be added when the corresponding resources are available. Pretrained backbone models and datasets remain subject to their respective licenses.
+The code and checkpoints will be released in this repository. Backbone models and benchmark datasets remain subject to their original licenses.
 
 ---
 
-<p align="center">
-  <strong>SheafPrune</strong><br>
-  <sub>Keep the evidence. Prune the rest.</sub><br><br>
-  <a href="README_zh-CN.md">阅读中文版</a> · <a href="#overview">Back to overview</a>
-</p>
+<p align="center"><sub>Keep the evidence. Prune the rest.</sub></p>
