@@ -11,9 +11,6 @@
   <strong>Code: Coming soon</strong>   ·   <strong>Weights: Coming soon</strong>
 </p>
 
-<p align="center">
-  <img src="assets/paper/method.png" width="100%" alt="SheafPrune method overview">
-</p>
 
 ## Overview
 
